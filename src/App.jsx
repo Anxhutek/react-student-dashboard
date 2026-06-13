@@ -15,6 +15,17 @@ function App() {
   const [tempGoal, setTempGoal] = useState(semTotalGoal);
   const [tempEndDate, setTempEndDate] = useState(semEndDate);
 
+  // Bulk overall semester stats (used when semester has ended/locked)
+  const [useBulkStats, setUseBulkStats] = useState(() => {
+    return localStorage.getItem('use_bulk_stats') === 'true';
+  });
+  const [bulkConducted, setBulkConducted] = useState(() => {
+    return parseInt(localStorage.getItem('bulk_conducted')) || 0;
+  });
+  const [bulkAttended, setBulkAttended] = useState(() => {
+    return parseInt(localStorage.getItem('bulk_attended')) || 0;
+  });
+
   // Daily log state: array of { date: 'YYYY-MM-DD', conducted: X, attended: Y }
   const [dailyLogs, setDailyLogs] = useState(() => {
     const saved = localStorage.getItem('daily_attendance_logs');
@@ -50,8 +61,15 @@ function App() {
     localStorage.setItem('sem_end_date', semEndDate);
   }, [semEndDate]);
 
+  useEffect(() => {
+    localStorage.setItem('use_bulk_stats', useBulkStats.toString());
+    localStorage.setItem('bulk_conducted', bulkConducted.toString());
+    localStorage.setItem('bulk_attended', bulkAttended.toString());
+  }, [useBulkStats, bulkConducted, bulkAttended]);
+
   // Check if selected log date is past semester end date
   const isSemEnded = semEndDate && inputDate > semEndDate;
+  const isCurrentDatePastSemEnd = semEndDate && new Date().toISOString().split('T')[0] > semEndDate;
 
   // Handle adding a daily log
   const handleAddLog = (e) => {
@@ -80,9 +98,14 @@ function App() {
     setDailyLogs(dailyLogs.filter(log => log.date !== dateToDelete));
   };
 
-  // Cumulative Calculations
-  const totalConductedSoFar = dailyLogs.reduce((sum, log) => sum + log.conducted, 0);
-  const totalAttendedSoFar = dailyLogs.reduce((sum, log) => sum + log.attended, 0);
+  // Cumulative Calculations (Switch between daily summation and bulk input)
+  const totalConductedSoFar = useBulkStats 
+    ? bulkConducted 
+    : dailyLogs.reduce((sum, log) => sum + log.conducted, 0);
+
+  const totalAttendedSoFar = useBulkStats 
+    ? bulkAttended 
+    : dailyLogs.reduce((sum, log) => sum + log.attended, 0);
   
   const currentAttendance = totalConductedSoFar > 0 
     ? ((totalAttendedSoFar / totalConductedSoFar) * 100).toFixed(2) 
@@ -283,68 +306,109 @@ function App() {
                 )}
               </div>
 
-              {/* Daily Log Entry Form */}
+              {/* Daily Log / Overall Held Entry Form */}
               <div className="panel-card">
-                <div className="panel-header">
-                  <span>Log Daily Classes</span>
+                <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{isCurrentDatePastSemEnd ? 'Overall Semester Stats' : 'Log Daily Classes'}</span>
+                  {isCurrentDatePastSemEnd && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input 
+                        type="checkbox" 
+                        id="toggleBulk"
+                        checked={useBulkStats}
+                        onChange={(e) => setUseBulkStats(e.target.checked)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <label htmlFor="toggleBulk" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>Use Bulk Input</label>
+                    </div>
+                  )}
                 </div>
-                {isSemEnded ? (
+                
+                {isSemEnded && !useBulkStats ? (
                   <div style={{ padding: '1rem', background: 'rgba(236,72,153,0.08)', border: '1px solid var(--accent-secondary)', borderRadius: '8px', color: 'var(--accent-secondary)', marginTop: '0.5rem', fontWeight: '600' }}>
-                    🚫 Log Locked: Selected date ({inputDate}) is past the Semester End Date ({semEndDate}). Daily class entries are closed.
+                    🚫 Log Locked: Selected date ({inputDate}) is past the Semester End Date ({semEndDate}). Daily class entries are closed. Use the checkbox above to set final overall stats.
                   </div>
                 ) : null}
-                <form onSubmit={handleAddLog} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr) auto', gap: '1rem', alignItems: 'end', marginTop: '0.5rem', opacity: isSemEnded ? 0.5 : 1 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Select Date</label>
-                    <input 
-                      type="date" 
-                      value={inputDate} 
-                      onChange={(e) => setInputDate(e.target.value)}
-                      style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff' }}
-                    />
+
+                {/* Conditional Form: Bulk Overall Stats vs Daily Log */}
+                {useBulkStats && isCurrentDatePastSemEnd ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr) auto', gap: '1rem', alignItems: 'end', marginTop: '0.5rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Overall Classes Held</label>
+                      <input 
+                        type="number" 
+                        value={bulkConducted} 
+                        onChange={(e) => setBulkConducted(Math.max(0, parseInt(e.target.value) || 0))}
+                        style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff', fontSize: '1rem' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Overall Classes Attended</label>
+                      <input 
+                        type="number" 
+                        value={bulkAttended} 
+                        onChange={(e) => setBulkAttended(Math.min(bulkConducted, Math.max(0, parseInt(e.target.value) || 0)))}
+                        style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff', fontSize: '1rem' }}
+                      />
+                    </div>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--accent-success)', fontWeight: '600', alignSelf: 'center', paddingBottom: '0.5rem' }}>
+                      ✓ Applied
+                    </span>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Classes Conducted</label>
-                    <input 
-                      type="number" 
-                      value={inputConducted} 
+                ) : (
+                  <form onSubmit={handleAddLog} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr) auto', gap: '1rem', alignItems: 'end', marginTop: '0.5rem', opacity: isSemEnded ? 0.5 : 1 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Select Date</label>
+                      <input 
+                        type="date" 
+                        value={inputDate} 
+                        onChange={(e) => setInputDate(e.target.value)}
+                        style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Classes Conducted</label>
+                      <input 
+                        type="number" 
+                        value={inputConducted} 
+                        disabled={isSemEnded}
+                        onChange={(e) => setInputConducted(parseInt(e.target.value) || 0)}
+                        style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Classes Attended</label>
+                      <input 
+                        type="number" 
+                        value={inputAttended} 
+                        disabled={isSemEnded}
+                        onChange={(e) => setInputAttended(parseInt(e.target.value) || 0)}
+                        style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff' }}
+                      />
+                    </div>
+                    <button 
+                      type="submit"
                       disabled={isSemEnded}
-                      onChange={(e) => setInputConducted(parseInt(e.target.value) || 0)}
-                      style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff' }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Classes Attended</label>
-                    <input 
-                      type="number" 
-                      value={inputAttended} 
-                      disabled={isSemEnded}
-                      onChange={(e) => setInputAttended(parseInt(e.target.value) || 0)}
-                      style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff' }}
-                    />
-                  </div>
-                  <button 
-                    type="submit"
-                    disabled={isSemEnded}
-                    style={{ 
-                      padding: '0.6rem 1.2rem', 
-                      background: isSemEnded ? 'rgba(255,255,255,0.05)' : 'var(--accent-primary)', 
-                      border: 'none', 
-                      borderRadius: '6px', 
-                      color: isSemEnded ? 'var(--text-muted)' : '#fff', 
-                      fontWeight: '600', 
-                      cursor: isSemEnded ? 'not-allowed' : 'pointer' 
-                    }}
-                  >
-                    Log Day
-                  </button>
-                </form>
+                      style={{ 
+                        padding: '0.6rem 1.2rem', 
+                        background: isSemEnded ? 'rgba(255,255,255,0.05)' : 'var(--accent-primary)', 
+                        border: 'none', 
+                        borderRadius: '6px', 
+                        color: isSemEnded ? 'var(--text-muted)' : '#fff', 
+                        fontWeight: '600', 
+                        cursor: isSemEnded ? 'not-allowed' : 'pointer' 
+                      }}
+                    >
+                      Log Day
+                    </button>
+                  </form>
+                )}
               </div>
 
               {/* History / Log List */}
-              <div className="panel-card" style={{ flex: 1 }}>
+              <div className="panel-card" style={{ flex: 1, opacity: useBulkStats ? 0.5 : 1 }}>
                 <div className="panel-header">
-                  <span>Attendance History</span>
+                  <span>Attendance History {useBulkStats && '(Deactivated - Bulk Mode)'}</span>
                 </div>
                 <div style={{ overflowY: 'auto', maxHeight: '250px', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
                   {dailyLogs.length === 0 ? (
@@ -367,7 +431,8 @@ function App() {
                           </span>
                           <button 
                             onClick={() => handleDeleteLog(log.date)}
-                            style={{ background: 'transparent', border: 'none', color: 'var(--accent-secondary)', cursor: 'pointer', fontWeight: 'bold' }}
+                            disabled={useBulkStats}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--accent-secondary)', cursor: useBulkStats ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
                           >
                             ✕
                           </button>

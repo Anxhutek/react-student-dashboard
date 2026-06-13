@@ -4,43 +4,108 @@ import './App.css';
 function App() {
   const [activeTab, setActiveTab] = useState('attendance');
   
-  // Attendance Checker States
-  const [totalClasses, setTotalClasses] = useState(100);
-  const [attendedClasses, setAttendedClasses] = useState(70);
+  // Semester configuration
+  const [semTotalGoal, setSemTotalGoal] = useState(() => {
+    return parseInt(localStorage.getItem('sem_total_goal')) || 450;
+  });
+  const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [tempGoal, setTempGoal] = useState(semTotalGoal);
+
+  // Daily log state: array of { date: 'YYYY-MM-DD', conducted: X, attended: Y }
+  const [dailyLogs, setDailyLogs] = useState(() => {
+    const saved = localStorage.getItem('daily_attendance_logs');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return [];
+      }
+    }
+    // Default mock data to start with
+    return [
+      { date: '2026-06-11', conducted: 5, attended: 4 },
+      { date: '2026-06-12', conducted: 6, attended: 5 },
+      { date: '2026-06-13', conducted: 4, attended: 3 },
+    ];
+  });
+
+  // Daily inputs
+  const [inputDate, setInputDate] = useState(new Date().toISOString().split('T')[0]);
+  const [inputConducted, setInputConducted] = useState(4);
+  const [inputAttended, setInputAttended] = useState(3);
+
+  // Save to localStorage when states change
+  useEffect(() => {
+    localStorage.setItem('daily_attendance_logs', JSON.stringify(dailyLogs));
+  }, [dailyLogs]);
+
+  useEffect(() => {
+    localStorage.setItem('sem_total_goal', semTotalGoal.toString());
+  }, [semTotalGoal]);
+
+  // Handle adding a daily log
+  const handleAddLog = (e) => {
+    e.preventDefault();
+    if (inputConducted < 0 || inputAttended < 0 || inputAttended > inputConducted) {
+      alert("Attended classes cannot exceed conducted classes, and numbers cannot be negative.");
+      return;
+    }
+
+    // Check if entry for date already exists, update it if so
+    const existingIndex = dailyLogs.findIndex(log => log.date === inputDate);
+    if (existingIndex !== -1) {
+      const updated = [...dailyLogs];
+      updated[existingIndex] = { date: inputDate, conducted: inputConducted, attended: inputAttended };
+      setDailyLogs(updated);
+    } else {
+      const newLog = { date: inputDate, conducted: inputConducted, attended: inputAttended };
+      // Sort logs by date descending
+      setDailyLogs([...dailyLogs, newLog].sort((a, b) => b.date.localeCompare(a.date)));
+    }
+  };
+
+  const handleDeleteLog = (dateToDelete) => {
+    setDailyLogs(dailyLogs.filter(log => log.date !== dateToDelete));
+  };
+
+  // Cumulative Calculations
+  const totalConductedSoFar = dailyLogs.reduce((sum, log) => sum + log.conducted, 0);
+  const totalAttendedSoFar = dailyLogs.reduce((sum, log) => sum + log.attended, 0);
   
-  // Calculation helper
-  const currentAttendance = totalClasses > 0 ? ((attendedClasses / totalClasses) * 100).toFixed(2) : 0;
+  const currentAttendance = totalConductedSoFar > 0 
+    ? ((totalAttendedSoFar / totalConductedSoFar) * 100).toFixed(2) 
+    : 0;
+  
   const isEligible = currentAttendance >= 75;
   
-  let resultText = '';
-  let statusColor = '';
+  let statusText = '';
   let countNumber = 0;
+  let statusColor = 'var(--text-secondary)';
 
-  if (totalClasses > 0) {
+  if (totalConductedSoFar > 0) {
     if (isEligible) {
-      countNumber = Math.floor((4 * attendedClasses - 3 * totalClasses) / 3);
-      if (countNumber < 0) countNumber = 0;
-      resultText = `Safe to Bunk! You can skip the next ${countNumber} classes consecutively.`;
+      countNumber = Math.floor((4 * totalAttendedSoFar - 3 * totalConductedSoFar) / 3);
+      statusText = `Safe to bunk next ${countNumber} classes consecutively!`;
       statusColor = 'var(--accent-success)';
     } else {
-      countNumber = Math.ceil(3 * totalClasses - 4 * attendedClasses);
-      if (countNumber < 0) countNumber = 0;
-      resultText = `Attendance Low! You need to attend the next ${countNumber} classes consecutively to reach 75%.`;
+      countNumber = Math.ceil(3 * totalConductedSoFar - 4 * totalAttendedSoFar);
+      statusText = `Must attend next ${countNumber} classes consecutively to hit 75%!`;
       statusColor = 'var(--accent-secondary)';
     }
+  } else {
+    statusText = 'No class records logged yet. Enter today\'s classes below!';
   }
 
-  // Dashboard Tasks
+  // Dashboard state (tasks)
   const [tasks, setTasks] = useState([
     { id: 1, name: 'Complete React Components Lab', subject: 'Web D', priority: 'High', due: 'Tonight' },
     { id: 2, name: 'Prepare cheat-sheet for JS Array Methods', subject: 'Programming', priority: 'Medium', due: 'Tomorrow' },
-    { id: 3, name: 'Revise Java OOP Concepts & Inheritance', subject: 'Java OOPs', priority: 'High', due: '1 Day' },
   ]);
 
   // AI Assistant States
   const [groqKey, setGroqKey] = useState(localStorage.getItem('groq_api_key') || '');
   const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', content: 'Hello Anshu! I am your AI Study Companion. Ask me any doubts about your syllabus, programming concepts, or tomorrow\'s test.' }
+    { role: 'assistant', content: 'Hello Anshu! I am your AI Study Companion. Ask me any doubts about your syllabus or test preparation.' }
   ]);
   const [userQuery, setUserQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -74,7 +139,7 @@ function App() {
         body: JSON.stringify({
           model: 'llama3-8b-8192',
           messages: [
-            { role: 'system', content: 'You are a helpful B.Tech Engineering College Doubt Solver. Keep explanations concise, clear, and prioritize providing code snippets or bullet-point summaries suitable for quick study.' },
+            { role: 'system', content: 'You are a helpful B.Tech doubt solver. Give brief answers and formatting.' },
             ...newMessages
           ]
         })
@@ -84,46 +149,13 @@ function App() {
       if (data.choices && data.choices[0]) {
         setChatMessages([...newMessages, { role: 'assistant', content: data.choices[0].message.content }]);
       } else {
-        throw new Error(data.error?.message || 'Failed to get response');
+        throw new Error('Failed to fetch from Groq');
       }
     } catch (err) {
-      setChatMessages([...newMessages, { role: 'assistant', content: `Error: ${err.message}. Please verify if your Groq API Key is correct and has active credits.` }]);
+      setChatMessages([...newMessages, { role: 'assistant', content: `Error: ${err.message}. Check API key.` }]);
     } finally {
       setLoading(false);
     }
-  };
-
-  // Quiz Engine
-  const [testPrepQuestion, setTestPrepQuestion] = useState(0);
-  const quizQuestions = [
-    {
-      q: 'Which hook is used to handle side effects in React?',
-      options: ['useState', 'useEffect', 'useContext', 'useReducer'],
-      ans: 'useEffect'
-    },
-    {
-      q: 'What is the correct syntax for declaring a state variable in React?',
-      options: ['const [state, setState] = useState(initial)', 'let state = useState()', 'const state = setState()', 'var state = new React.State()'],
-      ans: 'const [state, setState] = useState(initial)'
-    }
-  ];
-  const [selectedAns, setSelectedAns] = useState('');
-  const [score, setScore] = useState(0);
-  const [quizFinished, setQuizFinished] = useState(false);
-
-  const handleQuizAnswer = (option) => {
-    setSelectedAns(option);
-    if (option === quizQuestions[testPrepQuestion].ans) {
-      setScore(score + 1);
-    }
-    setTimeout(() => {
-      if (testPrepQuestion < quizQuestions.length - 1) {
-        setTestPrepQuestion(testPrepQuestion + 1);
-        setSelectedAns('');
-      } else {
-        setQuizFinished(true);
-      }
-    }, 1000);
   };
 
   return (
@@ -138,7 +170,7 @@ function App() {
             className={`nav-item ${activeTab === 'attendance' ? 'active' : ''}`}
             onClick={() => setActiveTab('attendance')}
           >
-            📅 Attendance Checker
+            📅 Attendance Tracker
           </li>
           <li 
             className={`nav-item ${activeTab === 'ai-tutor' ? 'active' : ''}`}
@@ -150,19 +182,7 @@ function App() {
             className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActiveTab('dashboard')}
           >
-            📊 Tasks & Stats
-          </li>
-          <li 
-            className={`nav-item ${activeTab === 'prep' ? 'active' : ''}`}
-            onClick={() => setActiveTab('prep')}
-          >
-            📝 Test Preparation
-          </li>
-          <li 
-            className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`}
-            onClick={() => setActiveTab('profile')}
-          >
-            👤 Student Profile
+            📊 Semester Overview
           </li>
         </ul>
       </aside>
@@ -176,97 +196,193 @@ function App() {
           </div>
           <div className="student-badge">
             <span className="status-dot" style={{ backgroundColor: isEligible ? 'var(--accent-success)' : 'var(--accent-secondary)' }}></span>
-            <span>{currentAttendance}% Attendance</span>
+            <span>{currentAttendance}% Overall</span>
           </div>
         </header>
 
         {activeTab === 'attendance' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '2rem' }}>
-            <div className="panel-card">
-              <div className="panel-header">
-                <span>Calculate & Plan Attendance</span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1rem' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <label style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>Total Classes Conducted So Far</label>
-                  <input 
-                    type="number" 
-                    value={totalClasses} 
-                    onChange={(e) => setTotalClasses(Math.max(0, parseInt(e.target.value) || 0))}
-                    style={{
-                      padding: '0.75rem',
-                      borderRadius: '8px',
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid var(--border-glass)',
-                      color: 'var(--text-primary)',
-                      fontSize: '1.1rem',
-                      fontWeight: '600'
-                    }}
-                  />
+            {/* Left side: Goal config, logging form, and history */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              
+              {/* Semester Goal Configuration */}
+              <div className="panel-card">
+                <div className="panel-header">
+                  <span>Semester Goal Settings</span>
                 </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <label style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>Number of Classes Attended</label>
-                  <input 
-                    type="number" 
-                    value={attendedClasses} 
-                    onChange={(e) => setAttendedClasses(Math.min(totalClasses, Math.max(0, parseInt(e.target.value) || 0)))}
-                    style={{
-                      padding: '0.75rem',
-                      borderRadius: '8px',
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid var(--border-glass)',
-                      color: 'var(--text-primary)',
-                      fontSize: '1.1rem',
-                      fontWeight: '600'
-                    }}
-                  />
-                </div>
-
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--text-secondary)' }}>
-                    <span>Progress to 75% Requirement</span>
-                    <span>75% Min Target</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Total Planned Semester Classes:</span>
+                    <strong style={{ fontSize: '1.2rem', marginLeft: '0.5rem' }}>{semTotalGoal}</strong>
                   </div>
-                  <div style={{ height: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
+                  {isEditingGoal ? (
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input 
+                        type="number" 
+                        value={tempGoal} 
+                        onChange={(e) => setTempGoal(parseInt(e.target.value) || 0)}
+                        style={{ width: '80px', padding: '0.4rem', borderRadius: '6px', background: '#222', border: '1px solid #44' }}
+                      />
+                      <button 
+                        onClick={() => { setSemTotalGoal(tempGoal); setIsEditingGoal(false); }}
+                        style={{ padding: '0.4rem 0.8rem', background: 'var(--accent-success)', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => { setTempGoal(semTotalGoal); setIsEditingGoal(true); }}
+                      style={{ padding: '0.4rem 0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer' }}
+                    >
+                      Edit Goal
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Daily Log Entry Form */}
+              <div className="panel-card">
+                <div className="panel-header">
+                  <span>Log Daily Classes</span>
+                </div>
+                <form onSubmit={handleAddLog} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr) auto', gap: '1rem', alignItems: 'end', marginTop: '0.5rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Select Date</label>
+                    <input 
+                      type="date" 
+                      value={inputDate} 
+                      onChange={(e) => setInputDate(e.target.value)}
+                      style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Classes Conducted</label>
+                    <input 
+                      type="number" 
+                      value={inputConducted} 
+                      onChange={(e) => setInputConducted(parseInt(e.target.value) || 0)}
+                      style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Classes Attended</label>
+                    <input 
+                      type="number" 
+                      value={inputAttended} 
+                      onChange={(e) => setInputAttended(parseInt(e.target.value) || 0)}
+                      style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff' }}
+                    />
+                  </div>
+                  <button 
+                    type="submit"
+                    style={{ padding: '0.6rem 1.2rem', background: 'var(--accent-primary)', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}
+                  >
+                    Log Day
+                  </button>
+                </form>
+              </div>
+
+              {/* History / Log List */}
+              <div className="panel-card" style={{ flex: 1 }}>
+                <div className="panel-header">
+                  <span>Attendance History</span>
+                </div>
+                <div style={{ overflowY: 'auto', maxHeight: '250px', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+                  {dailyLogs.length === 0 ? (
+                    <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No records logged yet.</p>
+                  ) : (
+                    dailyLogs.map((log) => (
+                      <div 
+                        key={log.date} 
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', borderRadius: '8px' }}
+                      >
+                        <div>
+                          <strong>{log.date}</strong>
+                          <span style={{ marginLeft: '1rem', color: 'var(--text-secondary)' }}>
+                            Conducted: {log.conducted} | Attended: {log.attended}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                          <span style={{ fontWeight: '700', color: log.conducted > 0 && (log.attended / log.conducted) >= 0.75 ? 'var(--accent-success)' : 'var(--accent-warning)' }}>
+                            {log.conducted > 0 ? ((log.attended / log.conducted) * 100).toFixed(0) : 0}%
+                          </span>
+                          <button 
+                            onClick={() => handleDeleteLog(log.date)}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--accent-secondary)', cursor: 'pointer', fontWeight: 'bold' }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Right side: Summary Overview */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              
+              {/* Circular Attendance Dial */}
+              <div className="panel-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: '1.5rem', background: 'rgba(255, 255, 255, 0.01)', flex: 1 }}>
+                <div 
+                  style={{ 
+                    width: '160px', 
+                    height: '160px', 
+                    borderRadius: '50%', 
+                    border: `5px solid ${statusColor}`, 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    justifyContent: 'center', 
+                    alignItems: 'center',
+                    boxShadow: `0 0 30px rgba(99, 102, 241, 0.05)`
+                  }}
+                >
+                  <span style={{ fontSize: '2.5rem', fontWeight: '800', color: statusColor }}>{currentAttendance}%</span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '600' }}>Overall</span>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <h2 style={{ fontSize: '1.4rem', color: statusColor, fontWeight: '700' }}>
+                    {isEligible ? 'Safe Status' : 'Attendance Shortage'}
+                  </h2>
+                  <p style={{ fontSize: '1.05rem', color: 'var(--text-primary)', fontWeight: '500', maxWidth: '300px', lineHeight: '1.4' }}>
+                    {statusText}
+                  </p>
+                </div>
+              </div>
+
+              {/* Progress towards Semester Goal */}
+              <div className="panel-card">
+                <div className="panel-header">
+                  <span>Semester Completion Tracker</span>
+                </div>
+                <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Classes Conducted So Far:</span>
+                    <strong>{totalConductedSoFar} / {semTotalGoal}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Total Attended So Far:</span>
+                    <strong>{totalAttendedSoFar}</strong>
+                  </div>
+                  <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
                     <div 
                       style={{ 
                         height: '100%', 
-                        width: `${Math.min(100, (currentAttendance / 75) * 100)}%`, 
-                        background: isEligible ? 'linear-gradient(90deg, var(--accent-primary), var(--accent-success))' : 'linear-gradient(90deg, var(--accent-warning), var(--accent-secondary))' 
+                        width: `${Math.min(100, (totalConductedSoFar / semTotalGoal) * 100)}%`, 
+                        background: 'var(--accent-primary)' 
                       }}
                     ></div>
-                    <div style={{ position: 'absolute', right: '25%', top: '0', width: '2px', height: '100%', background: 'rgba(255,255,255,0.3)' }}></div>
                   </div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Semester is approximately {((totalConductedSoFar / semTotalGoal) * 100).toFixed(0)}% completed (based on goal).
+                  </span>
                 </div>
               </div>
-            </div>
 
-            <div className="panel-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: '1.5rem', background: 'rgba(255, 255, 255, 0.01)' }}>
-              <div 
-                style={{ 
-                  width: '150px', 
-                  height: '150px', 
-                  borderRadius: '50%', 
-                  border: `4px solid ${statusColor}`, 
-                  display: 'flex', 
-                  flexDirection: 'column',
-                  justifyContent: 'center', 
-                  alignItems: 'center',
-                  boxShadow: `0 0 20px rgba(255,255,255,0.02)`
-                }}
-              >
-                <span style={{ fontSize: '2.5rem', fontWeight: '800', color: statusColor }}>{currentAttendance}%</span>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '600' }}>Current</span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <h2 style={{ fontSize: '1.5rem', color: statusColor, fontWeight: '700' }}>
-                  {isEligible ? 'Safe' : 'Shortage'} Status
-                </h2>
-                <p style={{ fontSize: '1.1rem', color: 'var(--text-primary)', fontWeight: '500', maxWidth: '300px', lineHeight: '1.4' }}>
-                  {resultText}
-                </p>
-              </div>
             </div>
           </div>
         )}
@@ -340,7 +456,6 @@ function App() {
               </div>
             ) : (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', overflow: 'hidden', marginTop: '1rem' }}>
-                {/* Chat window */}
                 <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '0.5rem' }}>
                   {chatMessages.map((msg, index) => (
                     <div 
@@ -367,7 +482,6 @@ function App() {
                   )}
                 </div>
 
-                {/* Input box */}
                 <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '0.75rem', borderTop: '1px solid var(--border-glass)', paddingTop: '1rem' }}>
                   <input
                     type="text"
@@ -406,21 +520,6 @@ function App() {
 
         {activeTab === 'dashboard' && (
           <>
-            <section className="stats-grid">
-              <div className="stat-card">
-                <span className="stat-title">Target Semester GPA</span>
-                <span className="stat-value">9.5+</span>
-              </div>
-              <div className="stat-card">
-                <span className="stat-title">Pending Tasks</span>
-                <span className="stat-value">{tasks.length} Items</span>
-              </div>
-              <div className="stat-card">
-                <span className="stat-title">Completed Labs</span>
-                <span className="stat-value" style={{ color: 'var(--accent-success)' }}>12/12</span>
-              </div>
-            </section>
-
             <div className="dashboard-layout">
               <div className="panel-card">
                 <div className="panel-header">
@@ -443,121 +542,25 @@ function App() {
 
               <div className="panel-card">
                 <div className="panel-header">
-                  <span>Recent Activity Log</span>
+                  <span>Logged Attendance Stats</span>
                 </div>
-                <div className="activity-list">
-                  <div className="activity-item">
-                    <div className="activity-timeline">
-                      <div className="timeline-dot"></div>
-                      <div className="timeline-line"></div>
-                    </div>
-                    <div className="activity-content">
-                      <span className="activity-title">Updated Attendance Calculator</span>
-                      <span className="activity-time">Just now</span>
-                    </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Total Classes Logged</span>
+                    <strong>{totalConductedSoFar}</strong>
                   </div>
-                  <div className="activity-item">
-                    <div className="activity-timeline">
-                      <div className="timeline-dot" style={{ background: 'var(--accent-secondary)' }}></div>
-                    </div>
-                    <div className="activity-content">
-                      <span className="activity-title">Pushed Spring REST APIs to Git</span>
-                      <span className="activity-time">Yesterday</span>
-                    </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Total Attended</span>
+                    <strong>{totalAttendedSoFar}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Bunkable / Shortage Offset</span>
+                    <strong style={{ color: statusColor }}>{countNumber} classes</strong>
                   </div>
                 </div>
               </div>
             </div>
           </>
-        )}
-
-        {activeTab === 'prep' && (
-          <div className="panel-card" style={{ maxWidth: '600px', margin: '0 auto' }}>
-            <div className="panel-header">
-              <span>Quick Test Preparation Quiz</span>
-            </div>
-            {!quizFinished ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                <p style={{ fontSize: '1.1rem', fontWeight: '500' }}>
-                  Q{testPrepQuestion + 1}: {quizQuestions[testPrepQuestion].q}
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {quizQuestions[testPrepQuestion].options.map((opt, index) => (
-                    <button
-                      key={index}
-                      onClick={() => handleQuizAnswer(opt)}
-                      style={{
-                        padding: '1rem',
-                        borderRadius: '8px',
-                        border: selectedAns === opt ? '2px solid var(--accent-primary)' : '1px solid var(--border-glass)',
-                        background: selectedAns === opt ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.02)',
-                        color: 'var(--text-primary)',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        fontWeight: '500'
-                      }}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '2rem 0' }}>
-                <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', color: 'var(--accent-success)' }}>
-                  🎉 Prep Quiz Completed!
-                </h3>
-                <p style={{ fontSize: '1.2rem', marginBottom: '1.5rem' }}>
-                  Your score: <strong>{score} / {quizQuestions.length}</strong>
-                </p>
-                <button
-                  onClick={() => {
-                    setTestPrepQuestion(0);
-                    setScore(0);
-                    setQuizFinished(false);
-                    setSelectedAns('');
-                  }}
-                  style={{
-                    padding: '0.75rem 1.5rem',
-                    background: 'var(--accent-primary)',
-                    border: 'none',
-                    borderRadius: '8px',
-                    color: 'white',
-                    fontWeight: '600',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Restart Quiz
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'profile' && (
-          <div className="panel-card" style={{ maxWidth: '600px', margin: '0 auto' }}>
-            <div className="panel-header">
-              <span>Academic Profile Info</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Full Name</span>
-                <strong>Anshu Kumar Verma</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Institution</span>
-                <strong>ABES Engineering College, Ghaziabad</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Course</span>
-                <strong>B.Tech Computer Science & Engineering</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Semester & Section</span>
-                <strong>2nd Semester, CSE-19</strong>
-              </div>
-            </div>
-          </div>
         )}
       </main>
     </div>

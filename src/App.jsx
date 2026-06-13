@@ -8,8 +8,12 @@ function App() {
   const [semTotalGoal, setSemTotalGoal] = useState(() => {
     return parseInt(localStorage.getItem('sem_total_goal')) || 450;
   });
+  const [semEndDate, setSemEndDate] = useState(() => {
+    return localStorage.getItem('sem_end_date') || '';
+  });
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [tempGoal, setTempGoal] = useState(semTotalGoal);
+  const [tempEndDate, setTempEndDate] = useState(semEndDate);
 
   // Daily log state: array of { date: 'YYYY-MM-DD', conducted: X, attended: Y }
   const [dailyLogs, setDailyLogs] = useState(() => {
@@ -21,7 +25,6 @@ function App() {
         return [];
       }
     }
-    // Default mock data to start with
     return [
       { date: '2026-06-11', conducted: 5, attended: 4 },
       { date: '2026-06-12', conducted: 6, attended: 5 },
@@ -43,15 +46,25 @@ function App() {
     localStorage.setItem('sem_total_goal', semTotalGoal.toString());
   }, [semTotalGoal]);
 
+  useEffect(() => {
+    localStorage.setItem('sem_end_date', semEndDate);
+  }, [semEndDate]);
+
+  // Check if selected log date is past semester end date
+  const isSemEnded = semEndDate && inputDate > semEndDate;
+
   // Handle adding a daily log
   const handleAddLog = (e) => {
     e.preventDefault();
+    if (isSemEnded) {
+      alert("Semester has ended. You cannot log classes for a date past the semester end date.");
+      return;
+    }
     if (inputConducted < 0 || inputAttended < 0 || inputAttended > inputConducted) {
       alert("Attended classes cannot exceed conducted classes, and numbers cannot be negative.");
       return;
     }
 
-    // Check if entry for date already exists, update it if so
     const existingIndex = dailyLogs.findIndex(log => log.date === inputDate);
     if (existingIndex !== -1) {
       const updated = [...dailyLogs];
@@ -59,7 +72,6 @@ function App() {
       setDailyLogs(updated);
     } else {
       const newLog = { date: inputDate, conducted: inputConducted, attended: inputAttended };
-      // Sort logs by date descending
       setDailyLogs([...dailyLogs, newLog].sort((a, b) => b.date.localeCompare(a.date)));
     }
   };
@@ -96,7 +108,7 @@ function App() {
     statusText = 'No class records logged yet. Enter today\'s classes below!';
   }
 
-  // Dashboard state (tasks)
+  // Dashboard Tasks
   const [tasks, setTasks] = useState([
     { id: 1, name: 'Complete React Components Lab', subject: 'Web D', priority: 'High', due: 'Tonight' },
     { id: 2, name: 'Prepare cheat-sheet for JS Array Methods', subject: 'Programming', priority: 'Medium', due: 'Tomorrow' },
@@ -208,37 +220,67 @@ function App() {
               {/* Semester Goal Configuration */}
               <div className="panel-card">
                 <div className="panel-header">
-                  <span>Semester Goal Settings</span>
+                  <span>Semester Config & Deadlines</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-                  <div>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Total Planned Semester Classes:</span>
-                    <strong style={{ fontSize: '1.2rem', marginLeft: '0.5rem' }}>{semTotalGoal}</strong>
-                  </div>
-                  {isEditingGoal ? (
+                {isEditingGoal ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Classes:</label>
+                        <input 
+                          type="number" 
+                          value={tempGoal} 
+                          onChange={(e) => setTempGoal(parseInt(e.target.value) || 0)}
+                          style={{ width: '100px', padding: '0.4rem', borderRadius: '6px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-glass)', color: '#fff' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Semester End Date:</label>
+                        <input 
+                          type="date" 
+                          value={tempEndDate} 
+                          onChange={(e) => setTempEndDate(e.target.value)}
+                          style={{ padding: '0.4rem', borderRadius: '6px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-glass)', color: '#fff' }}
+                        />
+                      </div>
+                    </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <input 
-                        type="number" 
-                        value={tempGoal} 
-                        onChange={(e) => setTempGoal(parseInt(e.target.value) || 0)}
-                        style={{ width: '80px', padding: '0.4rem', borderRadius: '6px', background: '#222', border: '1px solid #44' }}
-                      />
                       <button 
-                        onClick={() => { setSemTotalGoal(tempGoal); setIsEditingGoal(false); }}
-                        style={{ padding: '0.4rem 0.8rem', background: 'var(--accent-success)', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+                        onClick={() => { setSemTotalGoal(tempGoal); setSemEndDate(tempEndDate); setIsEditingGoal(false); }}
+                        style={{ padding: '0.4rem 1rem', background: 'var(--accent-primary)', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}
                       >
-                        Save
+                        Save Settings
+                      </button>
+                      <button 
+                        onClick={() => setIsEditingGoal(false)}
+                        style={{ padding: '0.4rem 1rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                      >
+                        Cancel
                       </button>
                     </div>
-                  ) : (
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '2rem' }}>
+                      <div>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Planned Classes:</span>
+                        <strong style={{ fontSize: '1.2rem', marginLeft: '0.5rem' }}>{semTotalGoal}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>End Date:</span>
+                        <strong style={{ fontSize: '1.2rem', marginLeft: '0.5rem', color: semEndDate ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                          {semEndDate ? semEndDate : 'Not Set'}
+                        </strong>
+                      </div>
+                    </div>
                     <button 
-                      onClick={() => { setTempGoal(semTotalGoal); setIsEditingGoal(true); }}
+                      onClick={() => { setTempGoal(semTotalGoal); setTempEndDate(semEndDate); setIsEditingGoal(true); }}
                       style={{ padding: '0.4rem 0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer' }}
                     >
-                      Edit Goal
+                      Edit Settings
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* Daily Log Entry Form */}
@@ -246,7 +288,12 @@ function App() {
                 <div className="panel-header">
                   <span>Log Daily Classes</span>
                 </div>
-                <form onSubmit={handleAddLog} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr) auto', gap: '1rem', alignItems: 'end', marginTop: '0.5rem' }}>
+                {isSemEnded ? (
+                  <div style={{ padding: '1rem', background: 'rgba(236,72,153,0.08)', border: '1px solid var(--accent-secondary)', borderRadius: '8px', color: 'var(--accent-secondary)', marginTop: '0.5rem', fontWeight: '600' }}>
+                    🚫 Log Locked: Selected date ({inputDate}) is past the Semester End Date ({semEndDate}). Daily class entries are closed.
+                  </div>
+                ) : null}
+                <form onSubmit={handleAddLog} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr) auto', gap: '1rem', alignItems: 'end', marginTop: '0.5rem', opacity: isSemEnded ? 0.5 : 1 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Select Date</label>
                     <input 
@@ -261,6 +308,7 @@ function App() {
                     <input 
                       type="number" 
                       value={inputConducted} 
+                      disabled={isSemEnded}
                       onChange={(e) => setInputConducted(parseInt(e.target.value) || 0)}
                       style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff' }}
                     />
@@ -270,13 +318,23 @@ function App() {
                     <input 
                       type="number" 
                       value={inputAttended} 
+                      disabled={isSemEnded}
                       onChange={(e) => setInputAttended(parseInt(e.target.value) || 0)}
                       style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', color: '#fff' }}
                     />
                   </div>
                   <button 
                     type="submit"
-                    style={{ padding: '0.6rem 1.2rem', background: 'var(--accent-primary)', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}
+                    disabled={isSemEnded}
+                    style={{ 
+                      padding: '0.6rem 1.2rem', 
+                      background: isSemEnded ? 'rgba(255,255,255,0.05)' : 'var(--accent-primary)', 
+                      border: 'none', 
+                      borderRadius: '6px', 
+                      color: isSemEnded ? 'var(--text-muted)' : '#fff', 
+                      fontWeight: '600', 
+                      cursor: isSemEnded ? 'not-allowed' : 'pointer' 
+                    }}
                   >
                     Log Day
                   </button>
